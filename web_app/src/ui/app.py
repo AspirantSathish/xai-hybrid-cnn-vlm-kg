@@ -1,7 +1,17 @@
+import sys
+import os
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 import streamlit as st
 from PIL import Image
 import time
 import json
+from agents.cnn_model import CNNModel  # adjust path if needed
+
+# Initialize model once
+cnn_model_path = os.path.join(os.path.dirname(__file__), '../../model/best_model_DenseNet121.h5')
+cnn = CNNModel(cnn_model_path)
 
 # ----------------------------
 # PAGE CONFIG
@@ -144,7 +154,9 @@ with col2:
                     st.write(s)
                     time.sleep(0.25)
                 status.update(label="Done", state="complete")
-
+                class_name, confidence = cnn.predict(image)
+                #st.write(f"🩸 Predicted Class: **{class_name}**")
+                #st.write(f"📊 Confidence: {confidence:.2f}")
             # Placeholder results
             mock_conf = 0.82
             label = "Suspected AML (placeholder)"
@@ -152,8 +164,8 @@ with col2:
 
             st.session_state.last_report = {
                 "model": model_choice,
-                "label": label,
-                "confidence": mock_conf,
+                "label": class_name,
+                "confidence": confidence,
                 "risk": risk,
                 "summary": "Morphology suggests blast-like cells with high N:C ratio (placeholder)."
             }
@@ -176,7 +188,7 @@ with col2:
         else:
             r = st.session_state.last_report
             st.markdown(f"**Predicted Label:** {r['label']}")
-            st.markdown(f"**Confidence:** {r['confidence']:.2f}")
+            st.markdown(f"**Confidence:** {r['confidence']*100:.2f}%")
             st.markdown(f"**Risk:** {r['risk']}")
             st.markdown(f"**Summary:** {r['summary']}")
             st.markdown("\n*VLM output placeholder: Add visual-language model results here.*")
@@ -201,7 +213,7 @@ with col2:
             st.info("Generate a report to see output here.")
         else:
             r = st.session_state.last_report
-            badge_text = f"Confidence: {r['confidence']:.2f}"
+            badge_text = f"Confidence: {r['confidence']*100:.2f}%"
             st.markdown(f'<span class="badge">{badge_text}</span>', unsafe_allow_html=True)
             st.markdown(f"### Result\n**{r['label']}**")
             st.write(r["summary"])
