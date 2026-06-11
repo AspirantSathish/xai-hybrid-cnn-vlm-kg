@@ -182,7 +182,7 @@ with col2:
     # ----------------------------
     with tab_classification:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("### Classification + VLM Output")
+        #st.markdown("### Classification + VLM Output")
         if st.session_state.last_report is None:
             st.info("Generate a report to see output here.")
         else:
