@@ -20,7 +20,7 @@ class CNNModel:
         :param target_size: Expected input size for the model
         :return: Preprocessed numpy array
         """
-        image = image.convert("RGB")
+        #image = image.convert("RGB")
         image = image.resize(target_size)
         img_array = np.asarray(image, dtype=np.float32) / 255.0
         img_array = np.expand_dims(img_array, axis=0)  # add batch dimension

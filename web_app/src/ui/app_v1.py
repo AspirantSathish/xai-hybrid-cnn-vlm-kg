@@ -7,13 +7,14 @@ import streamlit as st
 from PIL import Image
 import time
 import json
-import pandas as pd
 from agents.cnn_model import CNNModel  # adjust path if needed
+from agents.vlm_model import VLMModel
+from utils.image_utils import ImageProcessor
+from agents.report_agent import ReportAgent
+import tempfile
 
-# Initialize model once
-cnn_model_path = os.path.join(os.path.dirname(__file__), '../../model/best_model_DenseNet121.h5')
-cnn = CNNModel(cnn_model_path)
 
+processor = ImageProcessor(save_dir=os.path.join("web_app", "processed_images"))
 # ----------------------------
 # PAGE CONFIG
 # ----------------------------
@@ -458,7 +459,7 @@ with left_col:
 
     model_choice = st.selectbox(
         "Select Model",
-        ["Finetuned Model"],
+        ["blip2-leukemia-xl"],
         disabled=inputs_disabled
     )
 
@@ -496,9 +497,13 @@ with left_col:
         disabled=inputs_disabled
     )
 
-    if uploaded_file:
+      # Image preview
+    if uploaded_file is not None:
+        st.markdown("### Uploaded Image")
         image = Image.open(uploaded_file)
-        st.image(image, use_container_width=True)
+               
+        with st.popover(f"📄 {uploaded_file.name}"):
+            st.image(image, use_container_width=True)
 
     generate_report = st.button(
         "Generate Report",
@@ -506,13 +511,26 @@ with left_col:
         type="primary",
         disabled=inputs_disabled
     )
+    
+    # Initialize model once
+    cnn_model_path = os.path.join(os.path.dirname(__file__), '../../model/best_model_DenseNet121.h5')
+    
+    cnn = CNNModel(cnn_model_path)
 
+    @st.cache_resource(show_spinner=False)
+    def load_vlm_model(model_path):
+        st.session_state.logs.append("Loading VLM model…")
+        return VLMModel(model_path)
+    report_agent = ReportAgent()
+    # Placeholder model path (update after adding your model)
+    VLM_MODEL_PATH = os.path.join(os.path.dirname(__file__), '../../model/blip2-leukemia-xl')
     
 
     st.markdown("</div>", unsafe_allow_html=True)
 # ============================
 # RIGHT COLUMN: ANALYSIS RESULTS (75%)
 # ============================
+
 with right_col:
     if st.session_state.last_report is None:
         # Placeholder state
@@ -562,7 +580,7 @@ with right_col:
         # LEFT: CNN Classification + VLM Analysis
         with row1_left:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="card-header"><h3>🔬 CNN Classification</h3></div>', unsafe_allow_html=True)
+            st.markdown('<div class="card-header"><h3>🔬 CNN Classification + 🤖 VLM Analysis</h3></div>', unsafe_allow_html=True)
             
             # Metrics
             col_m1, col_m2 = st.columns(2)
@@ -574,22 +592,9 @@ with right_col:
                 st.markdown(f'<div class="metric-box {risk_class}"><div class="metric-label">Confidence</div><div class="metric-value">{confidence_pct:.1f}%</div></div>', unsafe_allow_html=True)
             
             st.markdown("**Morphological Summary:**")
-            st.markdown(f'<div class="content-box">{r["summary"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="content-box">{r["summary"]}', unsafe_allow_html=True)
             
-            st.markdown("**🤖 VLM Analysis:**")
-            st.markdown("""
-            <div class="content-box vlm">
-            • Visual description: Blast-like cells with abnormal morphology<br>
-            • N:C Ratio: High (>1:1)<br>
-            • Chromatin: Fine, dispersed pattern<br>
-            • Nucleoli: Prominent, visible<br>
-            • Cytoplasm: Moderate to abundant<br>
-            <br>
-            <em>Indicators consistent with acute leukemia</em>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            #st.markdown('</div>', unsafe_allow_html=True)
         
         # RIGHT: Knowledge Graph Reasoning
         with row1_right:
@@ -599,30 +604,53 @@ with right_col:
             st.markdown("**Reasoning Summary:**")
             st.markdown("""
             <div class="content-box kg">
-            <strong>Chain 1:</strong> Morphology → High N:C → ✓ AML<br>
-            <strong>Chain 2:</strong> Cytoplasm → Fine chromatin → ⚠ Immature<br>
-            <strong>Chain 3:</strong> Markers → No Auer rods → ? Subtype
+                <p>Knowledge graph reasoning is currently under development. Future updates will provide detailed insights into the relationships between morphological features, blast characteristics, and clinical outcomes.</p>
             </div>
             """, unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)       
-    if st.session_state.review_status == "approved":
+            st.markdown('</div>', unsafe_allow_html=True) 
+                 
+            if st.session_state.review_status == "approved":
 
-        st.divider()
+                st.divider()
 
-        st.success("Physician Approved Report")
+                #st.success("human review approved ✅", icon="✅")
+                st.info("human review loop development in progress.", icon="ℹ️")                
+                
+                # Two columns layout
+                col1, col2 = st.columns(2)
 
-        json_data = json.dumps(
-            st.session_state.last_report,
-            indent=2
-        )
-
-        st.download_button(
-            "📥 Download Final Report",
-            json_data,
-            file_name="final_report.json",
-            mime="application/json"
-        )    
+                with col1:
+                    confidence_pct = r['confidence'] * 100
+                    report = report_agent.create_diagnostic_report(
+                        report_id=r["report_id"],
+                        patient_id=st.session_state.patient_id,
+                        performer_name="Dr.Explainable AI",
+                        subtype=r["label"],
+                        confidence=confidence_pct + "%",
+                        morphology=r["summary"],
+                        kg_validation="NIL",
+                        pdf_url=f"https://yourapp/report/leukemia-report-{r['report_id']}.pdf"
+                    )
+                    
+                    #st.json(report)
+                    st.download_button(
+                        label="⬇️ Download Diagnostic Report JSON",
+                        data=report_agent.to_json(report),
+                        file_name=f"leukemia-report-{r['report_id']}.json",
+                        mime="application/json"
+                    )
+                with col2: 
+                                      
+                    if st.button("⬇️ Generate PDF"):                        
+                        pdf_file = report_agent.generate_pdf(r['summary'],r['label'],r['confidence'])
+                        with open(pdf_file, "rb") as f:
+                            st.download_button(
+                                label="Download Hematology Report",
+                                data=f,
+                                file_name=f"hematology_report_{r['report_id']}.pdf",
+                                mime="application/pdf"
+                            ) 
 
 # ============================
 # GENERATE REPORT ACTION
@@ -634,7 +662,11 @@ if generate_report:
         st.session_state.logs.append("Starting analysis workflow...")
         with st.status("🔄 Analyzing image... This may take a few moments.", expanded=True) as status:
             time.sleep(0.3)
-            st.write("📤 Loading CNN model...")
+            st.write("📤 Loading CNN model...")  
+            # Save resized image with unique ID
+            save_path, filename, report_id = processor.resize_and_save(image)
+            st.write(f"✅ Image saved at {save_path}")
+            st.write(f"📂 Filename: {filename}")          
             time.sleep(0.5)
             
             st.write("🎯 Performing image classification...")
@@ -642,6 +674,38 @@ if generate_report:
             class_name, confidence = cnn.predict(image)
             
             st.write("🤖 VLM analysis in progress...")
+            # VLM inference if Finetuned Model selected
+            if model_choice == "blip2-leukemia-xl":
+                # 
+                st.session_state.logs.append("Running VLM inference…")
+                prompt = """
+                Analyze the microscopy image and provide the following:
+                Morphological findings:
+                Blast characteristics:
+                Presence of Auer rods:
+                """
+                try:
+                    vlm = load_vlm_model(VLM_MODEL_PATH)
+                    st.session_state.logs.append("Model loaded, generating report…")
+                    generated_text = vlm.predict(save_path,class_name, prompt)
+                    st.session_state.logs.append("Report generated. Parsing output…")
+                    label = generated_text.split(". ")[0] if generated_text else "Result unavailable"
+                    generated_text += f"\n\nFinal Diagnosis: {class_name}"
+                    st.session_state.logs.append("Parsing complete.")
+                    summary = report_agent.generate_ui_text(generated_text)
+                    st.session_state.logs.append(f"UI text generated. {summary[-50:]}")  # Log last 50 chars of summary for debugging
+                except Exception as e:
+                    label = "[VLM inference failed]"
+                    summary = str(e)
+                    st.session_state.logs.append("Failed to generate report.")
+                        
+                finally:
+                    if label:
+                        st.session_state.logs.append(f"VLM label: {label}")
+                    st.session_state.logs.append("VLM analysis complete.")
+            else:
+                st.session_state.logs.append("No model selected, generating placeholder report…")                                
+                summary = "NIL"
             time.sleep(0.3)
             
             st.write("🧠 Building knowledge graph...")
@@ -651,15 +715,18 @@ if generate_report:
         
         # Store report
         st.session_state.last_report = {
+            "report_id": report_id,
             "model": model_choice,
             "label": class_name,
             "confidence": confidence,
             "risk": "Moderate" if 0.6 <= confidence <= 0.8 else ("High" if confidence > 0.8 else "Low"),
-            "summary": "Morphology indicates blast-like cells with high nuclear-cytoplasmic ratio. Prominent nucleoli and fine chromatin pattern observed. Cellular characteristics consistent with acute leukemia presentation. Definitive diagnosis requires flow cytometry and immunophenotyping."
+            "summary": summary,
+            "raw_output": generated_text if 'generated_text' in locals() else "NIL"
         }
         #st.session_state.report_generated = True
         st.session_state.review_submitted = False
         st.session_state.review_status = "pending"
+        st.session_state.review_status = "approved"  # For demonstration, auto-approve the report
         st.session_state.review_comments = ""
         st.session_state.logs.append(f"✅ Classification complete: {class_name} (confidence: {confidence:.2f})")
         
