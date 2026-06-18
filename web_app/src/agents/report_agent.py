@@ -1,9 +1,10 @@
 # src/agents/report_utils.py
 import re
 from datetime import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, ListFlowable, ListItem, Image
+from reportlab.lib.styles import getSampleStyleSheet,ParagraphStyle
 from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
 from utils.logging_utils import setup_logger
 import json
 
@@ -88,6 +89,23 @@ class ReportAgent:
             "diagnosis": diagnosis or "Not reported"
         }
 
+    def text_to_bullet_list(self, text_block):
+        """
+        Convert a block of text into a bullet list for ReportLab.
+        Splits by '-' or '.' and ignores empty entries.
+        """
+        styles = getSampleStyleSheet()
+        # Split by dash or period
+        raw_points = [p.strip(" -") for p in text_block.replace("\n", " ").split("-")]
+        # Filter out empty strings
+        points = [p for p in raw_points if p]
+
+        # Convert to ListFlowable
+        bullet_list = ListFlowable(
+            [ListItem(Paragraph(point, styles["Normal"])) for point in points],
+            bulletType="bullet"
+        )
+        return bullet_list
 
     # -----------------------------
     # STREAMLIT UI OUTPUT
@@ -127,10 +145,10 @@ class ReportAgent:
     # -----------------------------
     # PDF REPORT GENERATION
     # -----------------------------
-    def generate_pdf(self, raw_text,predicted_label,confidence, pdf_path="hematology_report.pdf"):
+    def generate_pdf(self,report_id, patient_id, raw_text,predicted_label,confidence,image_filename,pdf_path="hematology_report.pdf"):
         self.logger.info(f"Generating PDF report from raw VLM output. {raw_text[:100]}...")  # Log first 100 chars for debugging
-        data = self.parse_report(raw_text)
-
+        data = self.parse_report(raw_text)        
+        
         morph = data["morphological"] or "Not reported"
         blast = data["blast"] or "Not reported"
         additional = data["additional"] or ""
@@ -138,32 +156,81 @@ class ReportAgent:
         diagnosis = data["diagnosis"] or "Not reported"
 
         styles = getSampleStyleSheet()
-
+        # Create a custom subtitle style
+        styles.add(ParagraphStyle(
+            name="Subtitle",
+            parent=styles["Title"],   # base it on Title
+            fontSize=10,
+            leading=14,
+            textColor="grey",
+            alignment=1,              # 0=left, 1=center, 2=right
+        ))
         story = []
         
         story.append(Paragraph("Leukemia Diagnostic Report", styles["Title"]))
-        story.append(Paragraph("Explainable Leukemia Diagnosis Platform", styles["Italic"]))
+        story.append(Paragraph("Explainable Leukemia Diagnosis Platform", styles["Subtitle"]))
         story.append(Spacer(1,20))
 
-        story.append(Paragraph(f"Report Date: {datetime.now().strftime('%Y-%m-%d')}", styles["Normal"]))
-        story.append(Spacer(1, 20))
+        #story.append(Paragraph(f"Report Date: {datetime.now().strftime('%Y-%m-%d')}", styles["Normal"]))
+        #story.append(Spacer(1, 20))
         confidence_pct = confidence * 100
-        story.append(Paragraph(f"<b>Predicted Subtype: {predicted_label} and Confidence Score: {confidence_pct:.2f}% </b>", styles["Heading3"]))        
-        story.append(Spacer(1, 10))
+        # Image and patient details        
+        # Patient info rows
+        patient_info_rows = [
+            [Paragraph(f"<b>Patient ID:</b> {patient_id}", styles["Normal"])],
+            [Paragraph(f"<b>Report ID:</b> {report_id}", styles["Normal"])],
+            [Paragraph(f"<b>Report Date:</b> {datetime.now().strftime('%Y-%m-%d')}", styles["Normal"])],
+            [Paragraph(f"<b>Predicted Subtype:</b> {predicted_label}", styles["Heading5"])],
+            [Paragraph(f"<b>Confidence Score:</b> {confidence_pct:.2f}%", styles["Heading5"])],
+        ]
+        
+        # Nested table for patient info
+        patient_info_table = Table(patient_info_rows, colWidths=[230], rowHeights=[30]*len(patient_info_rows))
+        patient_info_table.setStyle(TableStyle([
+            ("BOX", (0,0), (-1,-1), 1, colors.black),
+            ("INNERGRID", (0,0), (-1,-1), 0.5, colors.grey),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING", (0,0), (-1,-1), 6),
+            ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ]))
+        
+        # Image object
+        image_path = f"web_app/processed_images/{image_filename}"  # Path to your image
+        img = Image(image_path, width=230, height=230)
+
+        # Main table (side-by-side)
+        table_data = [[patient_info_table, img]]
+        tableinfo = Table(table_data, colWidths=[250, 250])
+        tableinfo.setStyle(TableStyle([
+            ("VALIGN", (0,0), (0,0), "MIDDLE"),   # vertically center patient info
+            ("VALIGN", (1,0), (1,0), "MIDDLE"),   # vertically center image
+            ("ALIGN", (1,0), (1,0), "CENTER"),
+            ("BOX", (0,0), (-1,-1), 1, colors.black),
+        ]))
+       
+        story.append(tableinfo)
+        
+        
+        
+        #story.append(Paragraph(f"<b>Predicted Subtype: {predicted_label} and Confidence Score: {confidence_pct:.2f}% </b>", styles["Heading3"]))        
+        #story.append(Spacer(1, 10))
         
         story.append(Paragraph("<b>Morphological findings:</b>", styles["Heading3"]))
-        story.append(Paragraph(morph, styles["Normal"]))
+        #story.append(Paragraph(morph, styles["Normal"]))
+        story.append(self.text_to_bullet_list(morph))
         story.append(Spacer(1, 10))
 
 
         story.append(Paragraph("<b>Blast characteristics:</b>", styles["Heading3"]))
-        story.append(Paragraph(blast, styles["Normal"]))
+        #story.append(Paragraph(blast, styles["Normal"]))
+        story.append(self.text_to_bullet_list(blast))
         story.append(Spacer(1, 10))
         
         # Add Additional observations only if present
         if data["additional"]:
             story.append(Paragraph("<b>Additional observations:</b>", styles["Heading3"]))
             story.append(Paragraph(additional, styles["Normal"]))
+            #story.append(self.text_to_bullet_list(additional))
             story.append(Spacer(1, 10))
 
         story.append(Paragraph("<b>Presence of Auer rods:</b>", styles["Heading3"]))
@@ -208,6 +275,8 @@ for final clinical interpretation and diagnosis.
         pdf = SimpleDocTemplate(pdf_path, pagesize=A4)
         pdf.build(story)
         self.logger.info(f"PDF report generated successfully at {pdf_path}")
+        
+        
         return pdf_path
     
 

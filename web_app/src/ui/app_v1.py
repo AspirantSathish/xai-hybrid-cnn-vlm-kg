@@ -627,7 +627,7 @@ with right_col:
                         patient_id=st.session_state.patient_id,
                         performer_name="Dr.Explainable AI",
                         subtype=r["label"],
-                        confidence=confidence_pct + "%",
+                        confidence=confidence_pct,
                         morphology=r["summary"],
                         kg_validation="NIL",
                         pdf_url=f"https://yourapp/report/leukemia-report-{r['report_id']}.pdf"
@@ -642,8 +642,9 @@ with right_col:
                     )
                 with col2: 
                                       
-                    if st.button("⬇️ Generate PDF"):                        
-                        pdf_file = report_agent.generate_pdf(r['summary'],r['label'],r['confidence'])
+                    if st.button("⬇️ Generate PDF"):    
+                        st.write(st.session_state.patient_id)                    
+                        pdf_file = report_agent.generate_pdf(r['report_id'],st.session_state.patient_id, r['summary'], r['label'], r['confidence'],r['filename'])
                         with open(pdf_file, "rb") as f:
                             st.download_button(
                                 label="Download Hematology Report",
@@ -659,6 +660,10 @@ if generate_report:
     if uploaded_file is None:
         st.error("❌ Please upload an image first.")
     else:
+        st.session_state.patient_id = patient_id
+        st.session_state.patient_age = patient_age
+        st.session_state.patient_sex = patient_sex
+        
         st.session_state.logs.append("Starting analysis workflow...")
         with st.status("🔄 Analyzing image... This may take a few moments.", expanded=True) as status:
             time.sleep(0.3)
@@ -687,7 +692,8 @@ if generate_report:
                 try:
                     vlm = load_vlm_model(VLM_MODEL_PATH)
                     st.session_state.logs.append("Model loaded, generating report…")
-                    generated_text = vlm.predict(save_path,class_name, prompt)
+                    #generated_text = vlm.predict(save_path,class_name, prompt)
+                    generated_text = "Morphological findings: - Cellular morphology suggests early stage hematopoietic precursors - Nuclei display irregular contours with dispersed chromatin - Cytoplasm appears relatively scant around enlarged nuclei - Numerous immature blast cells are visible within the smear field - High nucleartocytoplasmic ratio is observed in many cells - The microscopic field contains several clusters of similar cells – Platelets are sparsely scattered throughout the field Blast characteristics: / Chromatin pattern appear slightly irregular in multiple cells , Blast population appears relatively uniform in size and structure - Nuclear membranes appear slightly uneven in multiple cell - Blast cells show immatures nuclear morphological uniformity across the slide Additional observations: . Background red blood cells appear relatively preserved Auer rods: Not observed"  # Placeholder for demonstration
                     st.session_state.logs.append("Report generated. Parsing output…")
                     label = generated_text.split(". ")[0] if generated_text else "Result unavailable"
                     generated_text += f"\n\nFinal Diagnosis: {class_name}"
@@ -716,6 +722,7 @@ if generate_report:
         # Store report
         st.session_state.last_report = {
             "report_id": report_id,
+            "filename": filename,
             "model": model_choice,
             "label": class_name,
             "confidence": confidence,
