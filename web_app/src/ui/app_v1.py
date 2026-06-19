@@ -672,10 +672,10 @@ if generate_report:
             save_path, filename, report_id = processor.resize_and_save(image)
             st.write(f"✅ Image saved at {save_path}")
             st.write(f"📂 Filename: {filename}")          
-            time.sleep(0.5)
+            #time.sleep(0.5)
             
             st.write("🎯 Performing image classification...")
-            time.sleep(0.5)
+            #time.sleep(0.5)
             class_name, confidence = cnn.predict(image)
             
             st.write("🤖 VLM analysis in progress...")
@@ -692,8 +692,8 @@ if generate_report:
                 try:
                     vlm = load_vlm_model(VLM_MODEL_PATH)
                     st.session_state.logs.append("Model loaded, generating report…")
-                    #generated_text = vlm.predict(save_path,class_name, prompt)
-                    generated_text = "Morphological findings: - Cellular morphology suggests early stage hematopoietic precursors - Nuclei display irregular contours with dispersed chromatin - Cytoplasm appears relatively scant around enlarged nuclei - Numerous immature blast cells are visible within the smear field - High nucleartocytoplasmic ratio is observed in many cells - The microscopic field contains several clusters of similar cells – Platelets are sparsely scattered throughout the field Blast characteristics: / Chromatin pattern appear slightly irregular in multiple cells , Blast population appears relatively uniform in size and structure - Nuclear membranes appear slightly uneven in multiple cell - Blast cells show immatures nuclear morphological uniformity across the slide Additional observations: . Background red blood cells appear relatively preserved Auer rods: Not observed"  # Placeholder for demonstration
+                    generated_text = vlm.predict(save_path,class_name, prompt)
+                    #generated_text = "Morphological findings: - Cellular morphology suggests early stage hematopoietic precursors - Nuclei display irregular contours with dispersed chromatin - Cytoplasm appears relatively scant around enlarged nuclei - Numerous immature blast cells are visible within the smear field - High nucleartocytoplasmic ratio is observed in many cells - The microscopic field contains several clusters of similar cells – Platelets are sparsely scattered throughout the field Blast characteristics: / Chromatin pattern appear slightly irregular in multiple cells , Blast population appears relatively uniform in size and structure - Nuclear membranes appear slightly uneven in multiple cell - Blast cells show immatures nuclear morphological uniformity across the slide Additional observations: . Background red blood cells appear relatively preserved Auer rods: Not observed"  # Placeholder for demonstration
                     st.session_state.logs.append("Report generated. Parsing output…")
                     label = generated_text.split(". ")[0] if generated_text else "Result unavailable"
                     generated_text += f"\n\nFinal Diagnosis: {class_name}"
